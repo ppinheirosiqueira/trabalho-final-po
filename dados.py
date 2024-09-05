@@ -6,13 +6,14 @@ import numpy as np
 def criando_cidades(n:int, cap:int) -> list:
     cidades:list = []
     for i in range(n):
-        demanda_aleatoria:int = random.randint(1_000, 60_000)
+        valor = np.random.exponential(scale=10_000)
+        demanda_aleatoria:int = int(max(1_000, min(60_000, valor)))
         coordenada_aleatoria:list = [random.randint(-100, 100), random.randint(-100, 100)]
         tera_infra:bool = False
         qtd_equi:int = 0
-        if demanda_aleatoria > 40_000:
-            tera_infra = True
-            qtd_equi = random.randint(0, int(demanda_aleatoria/cap))
+        if demanda_aleatoria > 7_500: # A menor cidade no artigo possui 15 mil de população, então este número poderia ser até menor
+            tera_infra = True # Pensando em talvez colocar uma função que dependa da demanda, mas não seja assim tão preto no branco
+            qtd_equi = random.randint(0, int(demanda_aleatoria/cap) + 1) # O +1 é para possuir a chance de alguma cidade já possuir mais mamógrafos do que o necessário
         nova_cidade:Cidade = Cidade(coordenada_aleatoria,demanda_aleatoria,tera_infra,qtd_equi,i,0.6)
         cidades.append(nova_cidade)
     return cidades
@@ -45,8 +46,7 @@ def criar_micro_regioes(cidades:list, matriz_distancias:list) -> None:
     for cidade in cidades:
         cidade.S = micro[cidade.micro]
 
-def calculo_dem_reg(cidades:list, matriz_distancias:list, distancia_maxima:float, cap:int) -> None:
-    
+def calculo_dem_reg(cidades:list, matriz_distancias:list, distancia_maxima:float) -> None:
     for i, cidade in enumerate(cidades):
         dem_reg_total = 0
         for j, outra_cidade in enumerate(cidades):
@@ -58,13 +58,12 @@ def criar_dados(N:int, cap:int, R:float) -> dict:
     cidades = criando_cidades(N, cap)
     d_ij = matriz_distancias(N, cidades)
     criar_micro_regioes(cidades,d_ij)
-    calculo_dem_reg(cidades,d_ij,R, cap)
+    calculo_dem_reg(cidades,d_ij,R)
 
     return {
         "cidades": cidades,
         "d_ij": d_ij
     }
-
 
 def __main__():
     N = 5
@@ -74,7 +73,7 @@ def __main__():
     cidades = criando_cidades(N, cap)
     dij = matriz_distancias(N, cidades)
     criar_micro_regioes(cidades,dij)
-    calculo_dem_reg(cidades,dij,R, cap)
+    calculo_dem_reg(cidades,dij,R)
     for cidade in cidades:
         print(cidade)
         print(cidade.dem_reg)
