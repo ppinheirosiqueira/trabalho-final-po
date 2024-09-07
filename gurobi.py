@@ -33,14 +33,13 @@ for cidade in auxDados["cidades"]:
     txMin_i.append(cidade.txMin)  
     nEquipExist_i.append(cidade.nEquipExist)
 
-
 def PLM_binario(novo_R:float = 60.0):
     R = novo_R
     # Inicializando o modelo
     model = gp.Model("Minimizar compra de Mamógrafos")
 
-    y = model.addVars(N, vtype=GRB.INTEGER, name="y")    # Variável inteira que representa o número de equipamentos instalados no local i
-    p = model.addVar(vtype=GRB.INTEGER, name="p")        # Variável inteira que indica a quantidade total de mamógrafos a serem instalados
+    y = model.addVars(N, lb=0, vtype=GRB.INTEGER, name="y")    # Variável inteira que representa o número de equipamentos instalados no local i
+    p = model.addVar(lb=0, vtype=GRB.INTEGER, name="p")        # Variável inteira que indica a quantidade total de mamógrafos a serem instalados
     z = model.addVars(N, vtype=GRB.BINARY, name="z")     # Variável binária que assume o valor 1 se a localidade i sedia algum equipamento de mamografia, e valor 0, caso contrário
 
     ## Para o PLM Binário:
@@ -51,7 +50,7 @@ def PLM_binario(novo_R:float = 60.0):
         gp.quicksum(
             dem_i[j] * x[i, j] for i in range(N) for j in S_i[i] # maximização da cobertura de exames
         ) - (p * cap * txViab) - ( # minimizar  o número de equipamentos a serem adquiridos, penalizando a aquisição de equipamentos que não atendam a uma taxa mínima de utilização que justifique economicamente, ou mesmo socialmente, a sua instalação
-            gp.quicksum(d_ij[i, j] * x[i, j] for i in range(N) for j in S_i[i]) / (N * R) #  minimizar a distância total entre os locais indicados a sediar mamógrafos e os que são atendidos por esses equipamentos
+            gp.quicksum(d_ij[i][j] * x[i, j] for i in range(N) for j in S_i[i]) / (N * R) #  minimizar a distância total entre os locais indicados a sediar mamógrafos e os que são atendidos por esses equipamentos
         ), GRB.MAXIMIZE
     )
     
@@ -65,7 +64,14 @@ def PLM_binario(novo_R:float = 60.0):
     if model.status == GRB.OPTIMAL:
         print(f"Valor ótimo encontrado: p = {p.X}")
         for i in range(N):
-            print(f"Número de Mamógrafos na cidade {auxDados['cidades'][i]}: {y[i].X}")
+            if z[i].X:
+                print(f"{auxDados['cidades'][i]}:")
+                print(f"Número de Mamógrafos: {y[i].X}")
+                print("Cidades que as mulheres são atendidas por esses mamógrafos:")
+                for j in range(N):
+                    if x[i, j].X:
+                        print(f"{auxDados['cidades'][j]}")
+                print("\n\n")
         print(f"Valor da função objetivo: {model.objVal}")
     
 def PLM_continuo(novo_R:float = 60.0):
@@ -73,12 +79,12 @@ def PLM_continuo(novo_R:float = 60.0):
     # Inicializando o modelo
     model = gp.Model("Minimizar compra de Mamógrafos")
 
-    y = model.addVars(N, vtype=GRB.INTEGER, name="y")    # Variável inteira que representa o número de equipamentos instalados no local i
-    p = model.addVar(vtype=GRB.INTEGER, name="p")        # Variável inteira que indica a quantidade total de mamógrafos a serem instalados
+    y = model.addVars(N, lb=0, vtype=GRB.INTEGER, name="y")    # Variável inteira que representa o número de equipamentos instalados no local i
+    p = model.addVar(lb=0, vtype=GRB.INTEGER, name="p")        # Variável inteira que indica a quantidade total de mamógrafos a serem instalados
     z = model.addVars(N, vtype=GRB.BINARY, name="z")     # Variável binária que assume o valor 1 se a localidade i sedia algum equipamento de mamografia, e valor 0, caso contrário
 
     ## Para o PLM contínuo:
-    x = model.addVars(N, N, vtype=GRB.CONTINUOUS, name="x")  # Variável contínua  que assume um valor no intervalo [0, 1], que indica opercentual de atendimento ao local j por algum mamógrafo instalado no local
+    x = model.addVars(N, N, lb=0, ub=1, vtype=GRB.CONTINUOUS, name="x")  # Variável contínua  que assume um valor no intervalo [0, 1], que indica opercentual de atendimento ao local j por algum mamógrafo instalado no local
     t = model.addVars(N, N, vtype=GRB.BINARY, name="t")  # Variável binária que assume o valor 1 se as mulheres do local j são atendidas por algum aparelho instalado no local i, e valor 0, caso contrário
 
     # Objetivo PLM contínuo
@@ -86,7 +92,7 @@ def PLM_continuo(novo_R:float = 60.0):
         gp.quicksum(
             dem_i[j] * x[i, j] for i in range(N) for j in S_i[i] 
             ) - (p * cap * txViab) - ( 
-            gp.quicksum(d_ij[i, j] * t[i, j] for i in range(N) for j in S_i[i]) / (N * R)
+            gp.quicksum(d_ij[i][j] * t[i, j] for i in range(N) for j in S_i[i]) / (N * R)
         ), GRB.MAXIMIZE
     )
 
@@ -95,16 +101,23 @@ def PLM_continuo(novo_R:float = 60.0):
     # Modificando para o valor que eles citam no artigo 10^-6
     model.setParam('MIPGap', 0.000001)
 
+    model.write("modelo.lp")
+
     # Rodar em si o Gurobi
     model.optimize()
 
     if model.status == GRB.OPTIMAL:
-        print(f"Valor ótimo encontrado: p = {p}")
-        # for i in range(N):
-            # print(f"Número de Mamógrafos em {auxDados["cidades"]}: {y[i].X}")
+        print(f"Valor ótimo encontrado: p = {p.X}")
+        for i in range(N):
+            if z[i].X:
+                print(f"{auxDados['cidades'][i]}:")
+                print(f"Número de Mamógrafos: {y[i].X}")
+                print("Porcentagem de mulheres atendidas por esses mamógrafos:")
+                for j in range(N):
+                    if x[i, j].X > 0:
+                        print(f"{auxDados['cidades'][j]}: {x[i, j].X}")
+                print("\n\n")
         print(f"Valor da função objetivo: {model.objVal}")
-    else:
-        print("Provavelmente esse if nem vai funcionar direito já que não será OPTIMAL")
 
 def add_restricoes(modelo, x, y, z, p):
     # Restrições, pegar o número da equação no artigo e subtrair 1
@@ -131,7 +144,8 @@ def add_restricoes(modelo, x, y, z, p):
     # OK - TESTADA INDIVIDUALMENTE
     # # Restrição 5: y_i >= 1 se infra = 1 e demReg_i >= txMin_i * cap
     for i in range(N):
-        modelo.addConstr(y[i] >= 1 * (infra_i[i] == 1) * (demReg_i[i] >= txMin_i[i] * cap), f"R5_{i}")
+        if infra_i[i] and demReg_i[i] >= txMin_i[i] * cap:
+            modelo.addConstr(y[i] >= 1, f"R5_{i}")
 
     # OK - TESTADA INDIVIDUALMENTE
     # # Restrição 6: y_i == 0 se infra = 0
