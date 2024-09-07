@@ -19,22 +19,45 @@ txViab = 0.6       # Taxa de viabilidade que justifica a aquisição de um novo 
 nEquipExist_i = [] # Número de equipamentos existentes na localidade i ∈ N
 #bigM = 10000       # Número inteiro positivo que assume no máximo o valor R, em km - NÃO PRECISA DE ACORDO COM O ANDRÉ, POSSO COLOCAR R NO LUGAR
 
-auxDados = coletar_dados(R)
+dem_total = 0
+auxDados = {}
 
-N = len(auxDados["cidades"])
-d_ij = auxDados["d_ij"]
+def aux_main(tipo_binario: bool, R_aux:float = 60.0):
+    global N, d_ij, dem_i, R, infra_i, micro_i, S_i, demReg_i, txMin_i, nEquipExist_i, auxDados, dem_total
+    R = R_aux
+    auxDados = coletar_dados(R)
+
+    N = len(auxDados["cidades"])
+    d_ij = auxDados["d_ij"]
     
-for cidade in auxDados["cidades"]:
-    dem_i.append(cidade.dem)
-    infra_i.append(cidade.infra)
-    micro_i.append(cidade.micro)       
-    S_i.append(cidade.S)           
-    demReg_i.append(cidade.demReg)      
-    txMin_i.append(cidade.txMin)  
-    nEquipExist_i.append(cidade.nEquipExist)
+    dem_i = []
+    infra_i = [] 
+    micro_i = [] 
+    S_i = [] 
+    demReg_i = [] 
+    txMin_i = [] 
+    nEquipExist_i = []
+    
+    for cidade in auxDados["cidades"]:
+        dem_i.append(cidade.dem)
+        infra_i.append(cidade.infra)
+        micro_i.append(cidade.micro)       
+        S_i.append(cidade.S)           
+        demReg_i.append(cidade.demReg)      
+        txMin_i.append(cidade.txMin)  
+        nEquipExist_i.append(cidade.nEquipExist)
+    
+    dem_total = 0
+    
+    for i in range(N):
+        dem_total += dem_i[i]
+    
+    if tipo_binario:
+        PLM_binario()
+    else:
+        PLM_continuo()
 
-def PLM_binario(novo_R:float = 60.0):
-    R = novo_R
+def PLM_binario():
     # Inicializando o modelo
     model = gp.Model("Minimizar compra de Mamógrafos")
 
@@ -61,21 +84,33 @@ def PLM_binario(novo_R:float = 60.0):
 
     model.optimize()
     
+    dem_com_taxa_min = 0
+    numero_maquinas = 0
+    dem_calc = 0
+    
     if model.status == GRB.OPTIMAL:
-        print(f"Valor ótimo encontrado: p = {p.X}")
         for i in range(N):
             if z[i].X:
                 print(f"{auxDados['cidades'][i]}:")
                 print(f"Número de Mamógrafos: {y[i].X}")
-                print("Cidades que as mulheres são atendidas por esses mamógrafos:")
+                print("Mulheres atendidas por esses mamógrafos:")
+                aux = 0
                 for j in range(N):
                     if x[i, j].X:
+                        aux += dem_i[j]
                         print(f"{auxDados['cidades'][j]}")
-                print("\n\n")
-        print(f"Valor da função objetivo: {model.objVal}")
+                print(f"% de utilização dos Mamógrafos: {100*aux/(cap*y[i].X)}")
+                dem_calc += aux
+                if aux/(cap*y[i].X) > txMin_i[i]:
+                    dem_com_taxa_min += aux
+                    numero_maquinas += y[i].X
+                print("\n")
+        print(f"Demanda atendendo a taxa de 60%: {dem_com_taxa_min}, cobertura: {100*dem_com_taxa_min/dem_total}")
+        print(f"Demanda não atendendo a taxa de 60%: {dem_calc}, cobertura: {100*dem_calc/dem_total}")
+        print(f"Quantidade de Máquinas Alocadas: p = {p.X}")
+        print(f"Quantidade de Máquinas realmente Alocadas: p = {numero_maquinas}")
     
-def PLM_continuo(novo_R:float = 60.0):
-    R = novo_R
+def PLM_continuo():
     # Inicializando o modelo
     model = gp.Model("Minimizar compra de Mamógrafos")
 
@@ -97,7 +132,11 @@ def PLM_continuo(novo_R:float = 60.0):
     )
 
     add_restricoes(model, x, y, z, p)
-
+    
+    for i in range(N):
+        for j in range(N):
+            model.addConstr(t[i, j] >= x[i, j], f"R10_{i}_{j}") # Até eu por isso aqui nada atualizava o t, não fazia sentido ele existir como estava
+            
     # Modificando para o valor que eles citam no artigo 10^-6
     model.setParam('MIPGap', 0.000001)
 
@@ -106,18 +145,31 @@ def PLM_continuo(novo_R:float = 60.0):
     # Rodar em si o Gurobi
     model.optimize()
 
+    dem_com_taxa_min = 0
+    numero_maquinas = 0
+    dem_calc = 0
+    
     if model.status == GRB.OPTIMAL:
-        print(f"Valor ótimo encontrado: p = {p.X}")
         for i in range(N):
             if z[i].X:
                 print(f"{auxDados['cidades'][i]}:")
                 print(f"Número de Mamógrafos: {y[i].X}")
                 print("Porcentagem de mulheres atendidas por esses mamógrafos:")
+                aux = 0
                 for j in range(N):
                     if x[i, j].X > 0:
+                        aux += dem_i[j] * x[i, j].X
                         print(f"{auxDados['cidades'][j]}: {x[i, j].X}")
-                print("\n\n")
-        print(f"Valor da função objetivo: {model.objVal}")
+                print(f"% de utilização dos Mamógrafos: {100*aux/(cap*y[i].X)}")
+                dem_calc += aux
+                if aux/(cap*y[i].X) > txMin_i[i]:
+                    dem_com_taxa_min += aux
+                    numero_maquinas += y[i].X
+                print("\n")
+        print(f"Demanda atendendo a taxa de 60%: {dem_com_taxa_min}, cobertura: {100*dem_com_taxa_min/dem_total}")
+        print(f"Demanda não atendendo a taxa de 60%: {dem_calc}, cobertura: {100*dem_calc/dem_total}")
+        print(f"Quantidade de Máquinas Alocadas: p = {p.X}")
+        print(f"Quantidade de Máquinas realmente Alocadas: p = {numero_maquinas}")
 
 def add_restricoes(modelo, x, y, z, p):
     # Restrições, pegar o número da equação no artigo e subtrair 1
@@ -143,6 +195,7 @@ def add_restricoes(modelo, x, y, z, p):
 
     # OK - TESTADA INDIVIDUALMENTE
     # # Restrição 5: y_i >= 1 se infra = 1 e demReg_i >= txMin_i * cap
+    ## Essa restrição sem ter as infras corretas e as distâncias corretas quebra muito o sistema, diversas cidades começam a ter mamógrafos com % de utilização bem abaixo do desejado
     for i in range(N):
         if infra_i[i] and demReg_i[i] >= txMin_i[i] * cap:
             modelo.addConstr(y[i] >= 1, f"R5_{i}")
@@ -172,7 +225,7 @@ def add_restricoes(modelo, x, y, z, p):
     # Restrições 10, 11, 12 e 13 já são marcadas quando crio as variáveis aqui no gurobi
     
 def __main__():
-    PLM_binario(60.0)
+    aux_main(False, 60.0)
     
 if __name__ == "__main__":
     __main__()
