@@ -58,32 +58,16 @@ def PLM_binario(novo_R:float = 60.0):
     add_restricoes(model, x, y, z, p)
 
     # Rodar em si o Gurobi
-    model.write("modelo.lp")
+    # model.write("modelo.lp")
 
     model.optimize()
+    
     if model.status == GRB.OPTIMAL:
-        print("Solução ótima encontrada.")
-    elif model.status == GRB.INFEASIBLE:
-        print("Modelo inviável.")
-    elif model.status == GRB.UNBOUNDED:
-        print("Modelo não limitado.")
-    else:
-        print(f"Status de otimização: {model.status}")
+        print(f"Valor ótimo encontrado: p = {p.X}")
+        for i in range(N):
+            print(f"Número de Mamógrafos na cidade {auxDados['cidades'][i]}: {y[i].X}")
+        print(f"Valor da função objetivo: {model.objVal}")
     
-    # print(model.ObjNVal)
-    # if model.status == GRB.OPTIMAL:
-    #     print(f"Valor ótimo encontrado: p = {p}")
-    #     print(f"Número de Mamógrafos por cidade: {y}")
-    #     print(f"Valor da função objetivo: {model.objVal}")
-    # else:
-    #      for cidade in y:    
-    #         print(f"Número de Mamógrafos na cidade {cidade}: {y[cidade].Xn}")
-    
-    # print(f"Valor otimizado de p: {p.Xn}")
-    
-
-
-
 def PLM_continuo(novo_R:float = 60.0):
     R = novo_R
     # Inicializando o modelo
@@ -108,52 +92,73 @@ def PLM_continuo(novo_R:float = 60.0):
 
     add_restricoes(model, x, y, z, p)
 
+    # Modificando para o valor que eles citam no artigo 10^-6
+    model.setParam('MIPGap', 0.000001)
+
     # Rodar em si o Gurobi
     model.optimize()
 
     if model.status == GRB.OPTIMAL:
         print(f"Valor ótimo encontrado: p = {p}")
-        print(f"Número de Mamógrafos por cidade: {y}")
+        # for i in range(N):
+            # print(f"Número de Mamógrafos em {auxDados["cidades"]}: {y[i].X}")
         print(f"Valor da função objetivo: {model.objVal}")
     else:
         print("Provavelmente esse if nem vai funcionar direito já que não será OPTIMAL")
 
 def add_restricoes(modelo, x, y, z, p):
-    # Restrições, pegar o número da equação e subtrair 1
+    # Restrições, pegar o número da equação no artigo e subtrair 1
+    
+    # OK - TESTADA INDIVIDUALMENTE
     # Restrição 1: Somatório de x_ij <= 1 para todo j em N
     for j in range(N):
         modelo.addConstr(gp.quicksum(x[i, j] for i in S_i[j]) <= 1, f"R1_{j}")
 
+    # OK - TESTADA INDIVIDUALMENTE
     # Restrição 2: Somatório de y_i = p
     modelo.addConstr(gp.quicksum(y[i] for i in range(N)) == p, "R2")
 
-    # Restrição 3: Demanda * x_ij <= Capacidade * y_i
+    # OK - TESTADA INDIVIDUALMENTE
+    # # Restrição 3: Demanda * x_ij <= Capacidade * y_i
     for i in range(N):
         modelo.addConstr(gp.quicksum(dem_i[j] * x[i, j] for j in S_i[i]) <= cap * y[i], f"R3_{i}")
 
-    # Restrição 4: y_i >= nEquipExist_i (existência de equipamentos)
+    # OK - TESTADA INDIVIDUALMENTE
+    # # Restrição 4: y_i >= nEquipExist_i (existência de equipamentos)
     for i in range(N):
         modelo.addConstr(y[i] >= nEquipExist_i[i], f"R4_{i}")
 
-    # Restrição 5: y_i >= 1 se infra = 1 e demReg_i >= txMin_i * cap
+    # OK - TESTADA INDIVIDUALMENTE
+    # # Restrição 5: y_i >= 1 se infra = 1 e demReg_i >= txMin_i * cap
     for i in range(N):
         modelo.addConstr(y[i] >= 1 * (infra_i[i] == 1) * (demReg_i[i] >= txMin_i[i] * cap), f"R5_{i}")
 
-    # Restrição 6: y_i == 0 se infra = 0
+    # OK - TESTADA INDIVIDUALMENTE
+    # # Restrição 6: y_i == 0 se infra = 0
     for i in range(N):
-        modelo.addConstr(y[i] == 0 * (infra_i[i] == 0), f"R6_{i}")
+        if not infra_i[i]:
+            modelo.addConstr(y[i] == 0, f"R6_{i}")
 
-    # Restrição 7: z_i >= y_i / pMax
+    # OK - TESTADA INDIVIDUALMENTE 
+    # # Restrição 7: z_i >= y_i / pMax
     for i in range(N):
         modelo.addConstr(z[i] >= y[i] / pMax, f"R7_{i}")
 
-    # Restrição 8: x_ii = z_i para todas as i
+    # OK - TESTADA INDIVIDUALMENTE
+    # # Restrição 8: x_ii = z_i para todas as i
     for i in range(N):
         modelo.addConstr(x[i, i] == z[i], f"R8_{i}_{i}")
 
-    # Restrição 9: z_i >= x_ij para todas as i e j
+    # OK - TESTADA INDIVIDUALMENTE
+    # # Restrição 9: z_i >= x_ij para todas as i e j
     for i in range(N):
         for j in range(N):
             modelo.addConstr(z[i] >= x[i, j], f"R9_{i}_{j}")
             
     # Restrições 10, 11, 12 e 13 já são marcadas quando crio as variáveis aqui no gurobi
+    
+def __main__():
+    PLM_binario(60.0)
+    
+if __name__ == "__main__":
+    __main__()
